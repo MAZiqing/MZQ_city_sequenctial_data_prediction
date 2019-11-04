@@ -22,6 +22,11 @@ sys.path.append('..')
 import rnn_model.model as my_model
 import src.py_dataset as my_dataset
 
+
+seed = 2019
+torch.manual_seed(seed)
+torch.cuda.manual_seed(seed)
+
 warnings.filterwarnings("ignore")
 #%% --------------------- Global Variable ------------------------
 print('training on cuda:', torch.cuda.is_available())
@@ -33,16 +38,16 @@ parser.add_argument('--have_cuda', type=bool, default=torch.cuda.is_available())
 
 parser.add_argument('--epochs', type=int, default=300,
                     help='upper epoch limit')
-parser.add_argument('--batch_size', type=int, default=64, metavar='N',
+parser.add_argument('--batch_size', type=int, default=32, metavar='N',
                     help='batch size')
-parser.add_argument('--learning_rate', type=float, default=0.00003, metavar='N',
+parser.add_argument('--learning_rate', type=float, default=0.00001, metavar='N',
                     help='lr')
 #  lr = 0.000003, epoch=100, train_MSEloss: 0.000237,  train_L1_loss = 0.00996,  model = './DNN_model_best.pkl'
 #  lr = 0.0000009 epoch=300, train_MSEloss: 0.000264,  train_L1_loss = 0.010879,  model = './DNN_model_best.pkl'
 #  lr = 0.0000009 epoch=996  train_MSEloss: 0.000110    train_L1_loss: 0.006391
 #  lr = 0.0000005 epoch: 676 | time: 24.430149 | train_MSEloss: 0.056815 | train_L1_loss: 0.593346|
 parser.add_argument('--encoder_sequence_length', type=int, default=40)
-parser.add_argument('--decoder_sequence_length', type=int, default=8)
+parser.add_argument('--decoder_sequence_length', type=int, default=4)
 
 # parser.add_argument('--rolling_window', type=int, default=20)
 parser.add_argument('--dataset_path', type=str, default='../Dataset/3bs_8q_4p_dataset_washed.csv',

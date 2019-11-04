@@ -33,7 +33,7 @@ parser.add_argument('--have_cuda', type=bool, default=torch.cuda.is_available())
 
 parser.add_argument('--epochs', type=int, default=400,
                     help='upper epoch limit')
-parser.add_argument('--batch_size', type=int, default=64, metavar='N',
+parser.add_argument('--batch_size', type=int, default=32, metavar='N',
                     help='batch size')
 parser.add_argument('--learning_rate', type=float, default=0.00003, metavar='N',
                     help='lr')
@@ -42,14 +42,14 @@ parser.add_argument('--learning_rate', type=float, default=0.00003, metavar='N',
 #  lr = 0.0000009 epoch=996  train_MSEloss: 0.000110    train_L1_loss: 0.006391
 #  lr = 0.0000005 epoch: 676 | time: 24.430149 | train_MSEloss: 0.056815 | train_L1_loss: 0.593346|
 parser.add_argument('--encoder_sequence_length', type=int, default=40)
-parser.add_argument('--decoder_sequence_length', type=int, default=8)
+parser.add_argument('--decoder_sequence_length', type=int, default=4)
 
 parser.add_argument('--rolling_window', type=int, default=20)
 parser.add_argument('--dataset_path', type=str, default='../Dataset/3bs_8q_4p_dataset_washed.csv',
                     help='dataset_path')
 # parser.add_argument('--pred_result_path', type=str, default='./pre_result.csv',
 #                     help='dataset_name')
-parser.add_argument('--result_path', type=str, default=os.path.join('../result','LSTM_result_file.csv'))
+parser.add_argument('--result_path', type=str, default=os.path.join('../result', 'EDLSTM_nD.csv'))
 args = parser.parse_args()
 print(' lr=', args.learning_rate, ' batch_size=', args.batch_size, ' epochs=', args.epochs)
 
@@ -81,7 +81,7 @@ class Trainer(object):
         input_size, output_size, output_column = self.dataset.get_input_output_config_size()
         self.dataset_length = self.dataset.__len__()
 
-        self.model = my_model.EDLSTM(input_size, output_size, output_column, args)
+        self.model = my_model.EDLSTM_nD(input_size, output_size, output_column, args)
         self.model = self.model.to(device)
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=args.learning_rate)
         # self.optimizer = torch.optim.SGD(self.model.parameters(), lr=0.0002) 不收敛
@@ -122,16 +122,16 @@ class Trainer(object):
         else:
             df_all = self.result_df
         df_all.to_csv(args.result_path)
-        a = 1
 
     def train(self):
         self.model.train()
         total_loss = 0.0
         total_loss_l1 = 0.0
         i = 1
-        for i, (input_p, input_time, label_p, decoder_p_last, decoder_time) in enumerate(self.data_loader):
+        for i, (input_p, input_time, label_p, decoder_time) in enumerate(self.data_loader):
             if input_p.shape[0] == args.batch_size:
-                outputs_p = self.model(input_p, input_time, decoder_p_last, decoder_time)  # torch.Size([64, 10, 9])
+                outputs_p = self.model(input_p, input_time, label_p, decoder_time)  # torch.Size([64, 10, 9])
+                label_p = label_p[:, -4:]
                 if i == 100:
                     if self.epoch % 20 == 0:
                         print('label:', np.around(label_p[0].cpu().detach().numpy(), decimals=5))
@@ -155,9 +155,10 @@ class Trainer(object):
         valid_total_loss = 0.0
         valid_total_loss_l1 = 0.0
         index = 1
-        for index, (input_p, input_time, label_p, decoder_p_last, decoder_time) in enumerate(self.data_loader_valid):
-            outputs_p = self.model(input_p, input_time, decoder_p_last, decoder_time)
+        for index, (input_p, input_time, label_p, decoder_time) in enumerate(self.data_loader_valid):
+            outputs_p = self.model(input_p, input_time, label_p, decoder_time)
             outputs_p = outputs_p.squeeze()
+            label_p = label_p[:, -4:]
             loss = self.criterion(outputs_p, label_p)
             l1loss = self.criterionL1(outputs_p, label_p)
             valid_total_loss += loss.cpu().detach().numpy()
