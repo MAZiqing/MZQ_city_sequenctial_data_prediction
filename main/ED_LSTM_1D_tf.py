@@ -33,23 +33,23 @@ parser.add_argument('--have_cuda', type=bool, default=torch.cuda.is_available())
 
 parser.add_argument('--epochs', type=int, default=400,
                     help='upper epoch limit')
-parser.add_argument('--batch_size', type=int, default=64, metavar='N',
+parser.add_argument('--batch_size', type=int, default=32, metavar='N',
                     help='batch size')
-parser.add_argument('--learning_rate', type=float, default=0.0003, metavar='N',
+parser.add_argument('--learning_rate', type=float, default=0.00003, metavar='N',
                     help='lr')
 #  lr = 0.000003, epoch=100, train_MSEloss: 0.000237,  train_L1_loss = 0.00996,  model = './DNN_model_best.pkl'
 #  lr = 0.0000009 epoch=300, train_MSEloss: 0.000264,  train_L1_loss = 0.010879,  model = './DNN_model_best.pkl'
 #  lr = 0.0000009 epoch=996  train_MSEloss: 0.000110    train_L1_loss: 0.006391
 #  lr = 0.0000005 epoch: 676 | time: 24.430149 | train_MSEloss: 0.056815 | train_L1_loss: 0.593346|
 parser.add_argument('--encoder_sequence_length', type=int, default=40)
-parser.add_argument('--decoder_sequence_length', type=int, default=8)
+parser.add_argument('--decoder_sequence_length', type=int, default=4)
 
-# parser.add_argument('--rolling_window', type=int, default=20)
+parser.add_argument('--rolling_window', type=int, default=20)
 parser.add_argument('--dataset_path', type=str, default='../Dataset/3bs_8q_4p_dataset_washed.csv',
                     help='dataset_path')
 # parser.add_argument('--pred_result_path', type=str, default='./pre_result.csv',
 #                     help='dataset_name')
-parser.add_argument('--result_path', type=str, default=os.path.join('../result', 'one_LSTM_result_file.csv'))
+parser.add_argument('--result_path', type=str, default=os.path.join('../result', 'EDLSTM_1D_tf.csv'))
 args = parser.parse_args()
 print(' lr=', args.learning_rate, ' batch_size=', args.batch_size, ' epochs=', args.epochs)
 
@@ -80,7 +80,8 @@ class Trainer(object):
                                             )
         input_size, output_size, output_column = self.dataset.get_input_output_config_size()
         self.dataset_length = self.dataset.__len__()
-        self.model = my_model.LSTM(input_size, output_size, output_column, args)
+
+        self.model = my_model.EDLSTM_1D_tf(input_size, output_size, output_column, args)
         self.model = self.model.to(device)
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=args.learning_rate)
         # self.optimizer = torch.optim.SGD(self.model.parameters(), lr=0.0002) 不收敛
@@ -121,7 +122,6 @@ class Trainer(object):
         else:
             df_all = self.result_df
         df_all.to_csv(args.result_path)
-        a = 1
 
     def train(self):
         self.model.train()
@@ -131,13 +131,13 @@ class Trainer(object):
         for i, (input_p, input_time, label_p, decoder_time) in enumerate(self.data_loader):
             if input_p.shape[0] == args.batch_size:
                 outputs_p = self.model(input_p, input_time, label_p, decoder_time)  # torch.Size([64, 10, 9])
+                label_p = label_p[:, -4:]
                 if i == 100:
                     if self.epoch % 20 == 0:
                         print('label:', np.around(label_p[0].cpu().detach().numpy(), decimals=5))
                         print('output:', np.around(outputs_p[0].squeeze().cpu().detach().numpy(), decimals=5))
-                # loss 不会因为sequence变长而变大，是一个平均后的数
-                loss = self.criterion(outputs_p.squeeze(), label_p[:, 1:])
-                l1loss = self.criterionL1(outputs_p.squeeze(), label_p[:, 1:])
+                loss = self.criterion(outputs_p.squeeze(), label_p.squeeze())
+                l1loss = self.criterionL1(outputs_p.squeeze(), label_p.squeeze())
                 loss.backward()
                 self.optimizer.step()
                 total_loss += loss.cpu().detach().numpy()
@@ -158,8 +158,9 @@ class Trainer(object):
         for index, (input_p, input_time, label_p, decoder_time) in enumerate(self.data_loader_valid):
             outputs_p = self.model(input_p, input_time, label_p, decoder_time)
             outputs_p = outputs_p.squeeze()
-            loss = self.criterion(outputs_p.squeeze(), label_p[:, 1:])
-            l1loss = self.criterionL1(outputs_p.squeeze(), label_p[:, 1:])
+            label_p = label_p[:, -4:]
+            loss = self.criterion(outputs_p, label_p)
+            l1loss = self.criterionL1(outputs_p, label_p)
             valid_total_loss += loss.cpu().detach().numpy()
             valid_total_loss_l1 += l1loss.cpu().detach().numpy()
 
@@ -192,12 +193,12 @@ class Trainer(object):
             if valid_mse_loss < best_valid_loss:
                 self.save_model()
                 best_valid_loss = valid_mse_loss
-                self.result_df['best_train_l1_loss'] = train_l1_loss
-                self.result_df['best_train_mse_loss'] = train_mse_loss
-                self.result_df['best_valid_l1_loss'] = valid_l1_loss
-                self.result_df['best_valid_mse_loss'] = valid_mse_loss
-                self.result_df['epoch_for_best_valid_loss'] = self.epoch
-                self.save_result_df()
+            self.result_df['best_train_l1_loss'] = train_l1_loss
+            self.result_df['best_train_mse_loss'] = train_mse_loss
+            self.result_df['best_valid_l1_loss'] = valid_l1_loss
+            self.result_df['best_valid_mse_loss'] = valid_mse_loss
+            self.result_df['epoch_for_best_valid_loss'] = self.epoch
+            self.save_result_df()
 
     def save_model(self):
         torch.save(self.model, self.model.model_path)

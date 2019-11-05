@@ -35,7 +35,7 @@ parser.add_argument('--epochs', type=int, default=400,
                     help='upper epoch limit')
 parser.add_argument('--batch_size', type=int, default=32, metavar='N',
                     help='batch size')
-parser.add_argument('--learning_rate', type=float, default=0.00003, metavar='N',
+parser.add_argument('--learning_rate', type=float, default=0.00001, metavar='N',
                     help='lr')
 #  lr = 0.000003, epoch=100, train_MSEloss: 0.000237,  train_L1_loss = 0.00996,  model = './DNN_model_best.pkl'
 #  lr = 0.0000009 epoch=300, train_MSEloss: 0.000264,  train_L1_loss = 0.010879,  model = './DNN_model_best.pkl'
@@ -193,12 +193,12 @@ class Trainer(object):
             if valid_mse_loss < best_valid_loss:
                 self.save_model()
                 best_valid_loss = valid_mse_loss
-                self.result_df['best_train_l1_loss'] = train_l1_loss
-                self.result_df['best_train_mse_loss'] = train_mse_loss
-                self.result_df['best_valid_l1_loss'] = valid_l1_loss
-                self.result_df['best_valid_mse_loss'] = valid_mse_loss
-                self.result_df['epoch_for_best_valid_loss'] = self.epoch
-                self.save_result_df()
+            self.result_df['best_train_l1_loss'] = train_l1_loss
+            self.result_df['best_train_mse_loss'] = train_mse_loss
+            self.result_df['best_valid_l1_loss'] = valid_l1_loss
+            self.result_df['best_valid_mse_loss'] = valid_mse_loss
+            self.result_df['epoch_for_best_valid_loss'] = self.epoch
+            self.save_result_df()
 
     def save_model(self):
         torch.save(self.model, self.model.model_path)

@@ -17,6 +17,11 @@ from torch.utils.data import Dataset
 from tqdm import tqdm
 # 自建库
 
+
+seed = 2019
+torch.manual_seed(seed)
+torch.cuda.manual_seed(seed)
+
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 
