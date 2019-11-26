@@ -65,14 +65,14 @@ class Trainer(object):
     def __init__(self, batch_size=args.batch_size):
         self.epoch = 0
         self.num_epoch = args.epochs
-        self.dataset = my_dataset.GpuDataset(dataset_type='train',
-                                             dataset_path=args.dataset_path,
-                                             encoder_sequence_length=args.encoder_sequence_length,
-                                             decoder_sequence_length=args.decoder_sequence_length)
-        self.dataset_valid = my_dataset.GpuDataset(dataset_type='valid',
-                                                   dataset_path=args.dataset_path,
-                                                   encoder_sequence_length=args.encoder_sequence_length,
-                                                   decoder_sequence_length=args.decoder_sequence_length
+        self.dataset = my_dataset.GpuResidualDataset(dataset_type='train',
+                                                     dataset_path=args.dataset_path,
+                                                     encoder_sequence_length=args.encoder_sequence_length,
+                                                     decoder_sequence_length=args.decoder_sequence_length)
+        self.dataset_valid = my_dataset.GpuResidualDataset(dataset_type='valid',
+                                                           dataset_path=args.dataset_path,
+                                                           encoder_sequence_length=args.encoder_sequence_length,
+                                                           decoder_sequence_length=args.decoder_sequence_length
                                                    )
         self.data_loader = DataLoader(self.dataset,
                                       batch_size=batch_size,

@@ -12,6 +12,7 @@ from datetime import datetime
 # 第三方库
 import numpy as np
 import pandas as pd
+from statsmodels.tsa.seasonal import seasonal_decompose
 import torch
 from torch.utils.data import Dataset
 from tqdm import tqdm
@@ -122,57 +123,74 @@ class RandomDataset(object):
         return inputs_p_q, inputs_config, inputs_time, output_pressure, time_stamp
 
 
-# class CreatDataSet(object):
-#     def __init__(self):
-#         self.dataset = pd.
-#         self.sensor_info = pd.read_csv('../sensor_info_important_station.csv')
-#         self.start_timestamp = None
-#         self.time_step = 60 * 15
-#         self.end_timestamp = None
-#
-#     def set_time(self, s, e):
-#         self.start_timestamp = datetime.timestamp(s)
-#         self.end_timestamp = datetime.timestamp(e)
-#         a = 1
-#
-#     def read_data(self):
-#         file_list = sorted(os.listdir('../DATASET'))
-#         index = range(int(self.start_timestamp), int(self.end_timestamp), int(self.time_step))
-#         flow_column = list(self.sensor_info['Flow Sensor ID'].dropna())
-#         columns = list(self.sensor_info['Pressure Sensor ID']) + flow_column
-#         df = pd.DataFrame(columns=columns, index=index)
-#         df['timestamp'] = list(index)
-#         # df = pd.DataFrame(, columns=['timestamp'])
-#         df['str_time'] = df['timestamp'].apply(timestamp_to_str)
-#         df = df.set_index('timestamp')
-#         m = 0
-#         print('reading and merging original 6G data')
-#         for file_name in tqdm(file_list):
-#             m += 1
-#             file = os.path.join('../DATASET', file_name)
-#             df1 = pd.read_csv(file, index_col=1, names=['sensor_id', 'value'])
-#             for column in columns:
-#                 mask1 = df1['sensor_id'].isin([column])
-#                 df2 = df1['value'][mask1]
-#                 df2.name = column
-#                 df3 = df2.interpolate()
-#                 df3 = df3.rolling(args_dataset.rolling_window).mean()
-#                 if not df3.empty:
-#                     a = 1
-#                 # df2 = df2.to_frame() 这句可以没有
-#                 # if not df2.empty:
-#                 df.update(df3)
-#         self.dataset = df
-#
-#     def join_config_station(self):
-#         print('joining the config and sensor value')
-#         df_pressure = self.dataset
-#         df_config = pd.read_csv('../Dataframe_all_16sensor.csv')
-#         df_config['timestamp'] = df_config['time'].apply(str_to_timestamp)
-#         df_config = df_config.set_index('timestamp')
-#         column_list = [str(i) + '#出水泵状态' for i in range(1, 12)]
-#         df_config = df_config[column_list]
-#         # df_config.apply(int)
-#         df = df_pressure.join(df_config)
-#         self.dataset = df
-#         df.to_csv(args_dataset.dataset_name)
+class GpuResidualDataset(Dataset):
+    def __init__(self, dataset_type, dataset_path,
+                 encoder_sequence_length, decoder_sequence_length):
+        # self.args = args
+        self.dataset_type = dataset_type
+        self.encoder_sequence_length = encoder_sequence_length
+        self.decoder_sequence_length = decoder_sequence_length
+        # self.delta_t = args_dataset.sequence_long
+        self.data = pd.read_csv(dataset_path, index_col=0)  # shape = (93715, 28)
+        self.flow_column = ['q' + str(i) for i in range(1, 12)]
+        self.pressure_column = ['p' + str(i) for i in range(1, 8)]
+        self.pressure_column_out = 'q8'
+        self.continue_column = self.flow_column + \
+                               self.pressure_column
+        # self.time_column = ['hour', 'weekday', 'season', 'month', 'weekofyear']
+        self.time_column = ['hour', 'weekday', 'month', 'weekofyear']
+        self.df_resid = None
+        self.df_seasonal = None
+        self.data_pre_treat()
+
+        self.inputs_p_q = torch.tensor(self.df_resid[self.pressure_column + self.flow_column].values,
+                                       dtype=torch.float32).to(device)
+        self.inputs_time = torch.tensor(self.df_resid[self.time_column].values,
+                                        dtype=torch.long).to(device)
+        self.output_p = torch.tensor(self.df_resid[self.pressure_column_out].values,
+                                     dtype=torch.float32).to(device)
+        print('dataset prepared !')
+
+    def get_input_output_config_size(self):
+        input_size = len(self.flow_column + self.pressure_column)
+        output_size = 1
+        output_column = list(self.data.columns).index(self.pressure_column_out)
+        return input_size, output_size, output_column
+
+    def data_pre_treat(self):
+        split_point = datetime.timestamp(datetime(2019, 1, 1))
+        if self.dataset_type == 'train':
+            self.data = self.data[self.data['timestamp'] < split_point]
+        elif self.dataset_type == 'valid':
+            self.data = self.data[self.data['timestamp'] > split_point]
+        self.data['datetime'] = self.data['datetime'].apply(str_to_datetime)
+        self.data['season'] = self.data['datetime'].apply(datetime_season)
+        self.data['weekday'] = self.data['datetime'].apply(datetime_weekday)
+        self.data['hour'] = self.data['datetime'].apply(datetime_hour)
+        self.data['month'] = self.data['datetime'].apply(datetime_month)
+        self.data['weekofyear'] = self.data['datetime'].apply(datetime_weekofyear)
+        # self.data['out_pressure'] = self.data[self.pressure_column_out]
+        self.data.fillna(0)
+        df_normalized = normalize(self.data[self.continue_column])
+        self.data.update(df_normalized)
+        self.data[self.continue_column] = self.data[self.continue_column].diff()
+        self.data = self.data.dropna()
+        ss_decomposition = seasonal_decompose(x=self.data[self.continue_column], model='additive', freq=48)
+        self.df_seasonal = ss_decomposition.seasonal
+        self.df_resid = self.data
+        self.df_resid[self.continue_column] = self.data[self.continue_column] - self.df_seasonal
+        a = 1
+
+    def __len__(self):
+        return self.data.shape[0] - 3 * (self.encoder_sequence_length + self.decoder_sequence_length)
+
+    def __getitem__(self, idx):
+        inputs_p_q = self.inputs_p_q[idx: idx + self.encoder_sequence_length]
+        # inputs_config = self.inputs_config[idx: idx + self.delta_t]
+        inputs_time = self.inputs_time[idx: idx + self.encoder_sequence_length]
+        label_p = self.output_p[idx: idx + self.encoder_sequence_length + self.decoder_sequence_length]
+        # aim_p = self.output_p[idx: idx + self.encoder_sequence_length]
+        decoder_time = self.inputs_time[idx + self.encoder_sequence_length:
+                                        idx + self.encoder_sequence_length + self.decoder_sequence_length]
+        return inputs_p_q, inputs_time, label_p, decoder_time
+

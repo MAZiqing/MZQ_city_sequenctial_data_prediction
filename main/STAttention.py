@@ -10,6 +10,8 @@ import time
 import argparse
 from datetime import datetime
 import warnings
+import sys
+sys.path.append('..')
 # 第三方库
 import numpy as np
 import pandas as pd
@@ -19,6 +21,7 @@ from torch.utils.data import DataLoader
 # 自建库
 import rnn_model.model as my_model
 import src.py_dataset as my_dataset
+
 
 #%% --------------------- Global Variable ------------------------
 warnings.filterwarnings('ignore')
@@ -33,7 +36,7 @@ parser.add_argument('--epochs', type=int, default=800,
                     help='upper epoch limit')
 parser.add_argument('--batch_size', type=int, default=64, metavar='N',
                     help='batch size')
-parser.add_argument('--learning_rate', type=float, default=0.00001, metavar='N',
+parser.add_argument('--learning_rate', type=float, default=0.0005, metavar='N',
                     help='lr')
 #  lr = 0.000003, epoch=100, train_MSEloss: 0.000237,  train_L1_loss = 0.00996,  model = './DNN_model_best.pkl'
 #  lr = 0.0000009 epoch=300, train_MSEloss: 0.000264,  train_L1_loss = 0.010879,  model = './DNN_model_best.pkl'
@@ -90,7 +93,7 @@ class Trainer(object):
         self.valid_mse_loss = []
         self.valid_l1_loss = []
         self.result_df = None
-        self.first_write_result()
+        # self.first_write_result()
 
     def first_write_result(self):
         self.result_df = pd.DataFrame(
@@ -197,7 +200,8 @@ class Trainer(object):
         print('model_svaed ! at ', self.model.model_path)
 
     def load_model(self):
-        self.model = torch.load(self.model.model_path)
+        self.model = torch.load(self.model.model_path, map_location='cpu')
+        print('model_loaded: ', self.model.model_path)
 
     def save_result_df(self):
         # if os.path.exists(args.result_path):
@@ -213,8 +217,9 @@ class Trainer(object):
 
 if __name__ == '__main__':
     trainer = Trainer()
-    # trainer.load_model()
+    trainer.load_model()
+    trainer.valid()
     # total_loss, total_loss_l1 = trainer.valid()
     # trainer.plot_result()
-    trainer.main_loop()
+    # trainer.main_loop()
     a = 1

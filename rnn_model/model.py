@@ -15,6 +15,7 @@ import src.py_dataset as my_dataset
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 torch.autograd.set_detect_anomaly(True)
 
+
 class LSTM_1D(nn.Module):
     def __init__(self, input_p_q_size, output_size, output_column, args):
         super(LSTM_1D, self).__init__()
@@ -22,8 +23,6 @@ class LSTM_1D(nn.Module):
         self.output_column = output_column
         self.model_path = os.path.join('../rnn_model', 'saved_pkl_model', self.model_name+'.pkl')
         self.args = args
-        # print('model_name:', self.model_name, 'saved at:', self.model_path)
-        # self.input_size = input_p_q_size + 5 + 3 + 3
         self.hidden_size = 64
         self.output_size = output_size
         self.LSTM = nn.LSTM(num_layers=2,
