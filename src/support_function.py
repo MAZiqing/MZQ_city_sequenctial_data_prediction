@@ -20,7 +20,7 @@ def eval_metrics(y_true, y_pred):
     metrics_dict = dict()
     metrics_dict['MAE'] = metrics.mean_absolute_error(y_true, y_pred)
     metrics_dict['MSE'] = metrics.mean_squared_error(y_true, y_pred)
-    metrics_dict['MAPE'] = np.mean(np.true_divide(np.abs(y_true-y_pred), y_true))
+    # metrics_dict['MAPE'] = np.mean(np.true_divide(np.abs(y_true-y_pred), y_true))
     return metrics_dict
 
 # def timestamp_to_datetime(x): 忽略 return datetime.fromtimestamp(x)
