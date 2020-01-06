@@ -38,7 +38,7 @@ if version == 'v3':
     filename = 'Transformer.csv'
 else:
     filename = 'STAttention.csv'
-parser.add_argument('--result_path', type=str, default=os.path.join('../result2', 'model_compare', filename))
+parser.add_argument('--result_path', type=str, default=os.path.join('../result', 'model_compare', filename))
 parser.add_argument('--epochs', type=int, default=100,
                     help='upper epoch limit')
 parser.add_argument('--batch_size', type=int, default=64

@@ -46,7 +46,7 @@ parser.add_argument('--dataset_path', type=str, default='../Dataset/3bs_8q_4p_da
                     help='dataset_path')
 parser.add_argument('--model_path', type=str, default=os.path.join('../src', 'saved_pkl_model'),
                     help='dataset_name')
-parser.add_argument('--result_path', type=str, default=os.path.join('../result2', 'STAttention.csv'))
+parser.add_argument('--result_path', type=str, default=os.path.join('../result', 'STAttention.csv'))
 args = parser.parse_args()
 
 print(args.mission_name,
@@ -130,9 +130,9 @@ class Trainer(object):
                 SA_score = torch.mean(torch.cat(self.model.spatial_att_score_list, dim=2), dim=0).cpu().detach().numpy()
                 TA_score = torch.mean(torch.cat(self.model.temporal_att_score_list, dim=1), dim=0).cpu().detach().numpy()
                 df_SA_score = pd.DataFrame(SA_score, index=(self.dataset.pressure_column + self.dataset.flow_column))
-                # df_SA_score.to_csv(os.path.join('../result2', 'visu', self.model.model_name + '_SA.csv'))
+                # df_SA_score.to_csv(os.path.join('../result', 'visu_spatio_attention', self.model.model_name + '_SA.csv'))
                 df_TA_score = pd.DataFrame(TA_score)
-                # df_TA_score.to_csv(os.path.join('../result2', 'visu', self.model.model_name + '_TA.csv'))
+                # df_TA_score.to_csv(os.path.join('../result', 'visu_spatio_attention', self.model.model_name + '_TA.csv'))
 
                 # fig, ax = plt.subplots(1, 1)
                 # img = ax.imshow(SA_score)
