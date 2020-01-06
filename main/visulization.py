@@ -27,8 +27,7 @@ torch.cuda.manual_seed(seed)
 
 
 parser = argparse.ArgumentParser(description='Time Series Model')
-parser.add_argument('--version', type=str, default='v7')
-parser.add_argument('--have_cuda', type=bool, default=torch.cuda.is_available())
+parser.add_argument('--version', type=str, default='v5')
 parser.add_argument('--mission_name', type=str, default='train_test')
 parser.add_argument('--target_sensor', type=str, default='q8')
 
@@ -41,21 +40,13 @@ parser.add_argument('--learning_rate', type=float, default=0.1, metavar='N',
                     help='lr')
 parser.add_argument('--num_layer', type=int, default=1)
 parser.add_argument('--num_hidden_state', type=int, default=64)
-
-#  lr = 0.000003, epoch=100, train_MSEloss: 0.000237,  train_L1_loss = 0.00996,  model = './DNN_model_best.pkl'
-#  lr = 0.0000009 epoch=300, train_MSEloss: 0.000264,  train_L1_loss = 0.010879,  model = './DNN_model_best.pkl'
-#  lr = 0.0000009 epoch=996  train_MSEloss: 0.000110    train_L1_loss: 0.006391
-#  lr = 0.0000005 epoch: 676 | time: 24.430149 | tra
-#  in_MSEloss: 0.056815 | train_L1_loss: 0.593346|
 parser.add_argument('--encoder_sequence_length', type=int, default=60)
 parser.add_argument('--decoder_sequence_length', type=int, default=4)
-
-# parser.add_argument('--rolling_window', type=int, default=20)
 parser.add_argument('--dataset_path', type=str, default='../Dataset/3bs_8q_4p_dataset_washed.csv',
                     help='dataset_path')
 parser.add_argument('--model_path', type=str, default=os.path.join('../src', 'saved_pkl_model'),
                     help='dataset_name')
-parser.add_argument('--result_path', type=str, default=os.path.join('../result', 'STAttention.csv'))
+parser.add_argument('--result_path', type=str, default=os.path.join('../result2', 'STAttention.csv'))
 args = parser.parse_args()
 
 print(args.mission_name,
@@ -114,7 +105,6 @@ class Trainer(object):
 
         self.model = self.model.to(device)
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=args.learning_rate)
-        # self.optimizer = torch.optim.SGD(self.model.parameters(), lr=0.0002) 不收敛
         self.criterion = nn.MSELoss().to(device)
         self.criterionL1 = nn.L1Loss().to(device)
         self.batch_size = batch_size
@@ -124,66 +114,6 @@ class Trainer(object):
         self.valid_l1_loss = []
         self.result_df = None
         # self.first_write_result()
-
-    def first_write_result(self):
-        self.result_df = pd.DataFrame(
-            {
-                'model_name': [self.model.model_name + args.version
-                               + '_' + args.mission_name
-                               + '_' + 'new_recon'],
-                'model_pkl_path': [self.model.model_path],
-                'start_time': [datetime.now()],
-                'device': [device],
-                'learning_rate': [args.learning_rate],
-                'seed': [seed],
-                'batch size': [args.batch_size],
-                'encoder_sequence_length': [args.encoder_sequence_length],
-                'decoder_sequence_length': [args.decoder_sequence_length],
-                'best_train_l1_loss': [1000],
-                'best_train_mse_loss': [1000],
-                'best_valid_l1_loss': [1000],
-                'best_valid_mse_loss': [1000],
-                'epoch_for_best_valid_loss': [0],
-                'train_mse_curve': [[1, 2, 3]],
-                'valid_mse_curve': [[1, 2, 3]],
-                'num_hidden_state': args.num_hidden_state,
-                'num_layer': args.num_layer,
-                'recon_error': [1000]
-            }
-        )
-        self.result_df = self.result_df.set_index('start_time')
-        if os.path.exists(args.result_path):
-            df_old = pd.read_csv(args.result_path, index_col='start_time')
-            df_all = pd.concat([df_old, self.result_df], sort=False)
-        else:
-            df_all = self.result_df
-        df_all.to_csv(args.result_path)
-
-    def train(self):
-        self.model.train()
-        total_loss = 0.0
-        total_loss_l1 = 0.0
-        i = 1
-        for i, (input_p, label_p, datetime_i) in enumerate(self.data_loader):
-            self.optimizer.zero_grad()
-            if input_p.shape[0] == args.batch_size:
-                outputs_p = self.model(input_p, label_p)  # torch.Size([64, 10, 9])
-                label_p = label_p[:, -args.decoder_sequence_length:]
-                # outputs_p = outputs_p.squeeze()
-                if i == 100:
-                    if self.epoch % 10 == 0:
-                        print('label:', np.around(label_p[0].cpu().detach().numpy(), decimals=5))
-                        print('output:', np.around(outputs_p[0].cpu().detach().numpy(), decimals=5))
-                loss = self.criterion(outputs_p, label_p)
-                l1loss = self.criterionL1(outputs_p, label_p)
-                loss.backward()
-                self.optimizer.step()
-                total_loss += loss.cpu().detach().numpy()
-                total_loss_l1 += l1loss.cpu().detach().numpy()
-
-        self.train_mse_loss.append(total_loss / i)
-        self.result_df['train_mse_curve'] = [self.train_mse_loss]
-        return total_loss / i, total_loss_l1 / i
 
     def valid(self):
         self.model.eval()
@@ -197,12 +127,12 @@ class Trainer(object):
             if input_p.shape[0] == args.batch_size:
                 outputs_p = self.model(input_p, label_p)
 
-                # SA_score = torch.mean(torch.cat(self.model.spatial_att_score_list, dim=2), dim=0).cpu().detach().numpy()
-                # TA_score = torch.mean(torch.cat(self.model.temporal_att_score_list, dim=1), dim=0).cpu().detach().numpy()
-                # df_SA_score = pd.DataFrame(SA_score, index=(self.dataset.pressure_column + self.dataset.flow_column))
-                # df_SA_score.to_csv(os.path.join('../result', 'visu', self.model.model_name + '_SA.csv'))
-                # df_TA_score = pd.DataFrame(TA_score)
-                # df_TA_score.to_csv(os.path.join('../result', 'visu', self.model.model_name + '_TA.csv'))
+                SA_score = torch.mean(torch.cat(self.model.spatial_att_score_list, dim=2), dim=0).cpu().detach().numpy()
+                TA_score = torch.mean(torch.cat(self.model.temporal_att_score_list, dim=1), dim=0).cpu().detach().numpy()
+                df_SA_score = pd.DataFrame(SA_score, index=(self.dataset.pressure_column + self.dataset.flow_column))
+                # df_SA_score.to_csv(os.path.join('../result2', 'visu', self.model.model_name + '_SA.csv'))
+                df_TA_score = pd.DataFrame(TA_score)
+                # df_TA_score.to_csv(os.path.join('../result2', 'visu', self.model.model_name + '_TA.csv'))
 
                 # fig, ax = plt.subplots(1, 1)
                 # img = ax.imshow(SA_score)
@@ -241,22 +171,6 @@ class Trainer(object):
             # ))
             if valid_mse_loss < best_valid_mse_loss:
                 recon_list = self.reconstruct(datetime_list, outputs_p_list)
-                # self.save_model()
-                best_valid_mse_loss = valid_mse_loss
-                best_epoch = self.epoch
-                self.result_df['best_valid_mse_loss'] = best_valid_mse_loss
-                self.result_df['best_train_l1_loss'] = train_l1_loss
-                self.result_df['best_train_mse_loss'] = train_mse_loss
-                self.result_df['best_valid_l1_loss'] = valid_l1_loss
-                self.result_df['recon_error'] = [recon_list]
-                # self.save_result_df()
-            self.result_df['epoch_for_best_valid_loss'] = str(best_epoch) + '/' + str(self.epoch)
-            # if self.epoch % 5 == 0:
-            #     self.save_result_df()
-
-    def save_model(self):
-        torch.save(self.model, os.path.join(args.model_path, self.model.model_name+args.target_sensor+'.pkl'))
-        print('model_svaed ! at ', self.model.model_path)
 
     def load_model(self):
 
@@ -265,17 +179,6 @@ class Trainer(object):
         # print('model_svaed ! at ', model_path)
         self.model = torch.load(model_path)
         print('model_loaded: ', model_path)
-
-    def save_result_df(self):
-        # if os.path.exists(args.result_path):
-        df_old = pd.read_csv(args.result_path, index_col='start_time')
-        #     df_all = pd.concat([self.result_df, df_old], axis=1)
-        # else:
-        str_time = str(list(self.result_df.index)[0])
-        self.result_df['start_time_str'] = str_time
-        self.result_df = self.result_df.set_index('start_time_str')
-        df_old.update(self.result_df)
-        df_old.to_csv(args.result_path)
 
     def reconstruct(self, timestamp_list, resid_pred_list):
         if args.mission_name == 'train_valid':

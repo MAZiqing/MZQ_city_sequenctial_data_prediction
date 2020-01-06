@@ -4,17 +4,13 @@
 # @Author  : maziqing<maziqing@interns.ainnovation.com>
 # @Time    : 2019/8/28 14:03
 
-# 标准库
 import time
 import warnings
 import sys
-
-sys.path.append('..')
-# 第三方库
+# sys.path.append('..')
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
-# 自建库
 import src.model as my_model
 import src.py_dataset as my_dataset
 from src.support_function import *
@@ -27,13 +23,23 @@ seed = 2017
 torch.manual_seed(seed)
 torch.cuda.manual_seed(seed)
 
-
 parser = argparse.ArgumentParser(description='Time Series Model')
-parser.add_argument('--version', type=str, default='v7')
-parser.add_argument('--have_cuda', type=bool, default=torch.cuda.is_available())
+version = 'v7'
+parser.add_argument('--version', type=str, default=version)
 parser.add_argument('--mission_name', type=str, default='train_test')
 parser.add_argument('--target_sensor', type=str, default='q8')
-parser.add_argument('--epochs', type=int, default=150,
+parser.add_argument('--model_path', type=str, default=os.path.join('../src', 'saved_pkl_model'),
+                    help='dataset_name')
+if version == 'v1':
+    filename = 'ANN.csv'
+if version == 'v2':
+    filename = 'Seq2Seq.csv'
+if version == 'v3':
+    filename = 'Transformer.csv'
+else:
+    filename = 'STAttention.csv'
+parser.add_argument('--result_path', type=str, default=os.path.join('../result2', 'model_compare', filename))
+parser.add_argument('--epochs', type=int, default=100,
                     help='upper epoch limit')
 parser.add_argument('--batch_size', type=int, default=64
                     , metavar='N',
@@ -44,9 +50,6 @@ parser.add_argument('--num_layer', type=int, default=1)
 parser.add_argument('--num_hidden_state', type=int, default=64)
 parser.add_argument('--encoder_sequence_length', type=int, default=60)
 parser.add_argument('--decoder_sequence_length', type=int, default=4)
-parser.add_argument('--model_path', type=str, default=os.path.join('../src', 'saved_pkl_model'),
-                    help='dataset_name')
-parser.add_argument('--result_path', type=str, default=os.path.join('../result', 'STAttention.csv'))
 args = parser.parse_args()
 
 print(args.mission_name,
@@ -61,7 +64,8 @@ print(args.mission_name,
 
 # %% --------------------- Class Trainer --------------------------
 class Trainer(object):
-    def __init__(self, batch_size=args.batch_size):
+    def __init__(self):
+        self.batch_size = args.batch_size
         self.epoch = 0
         self.num_epoch = args.epochs
         self.dataset = my_dataset.WDSDataset(dataset_type='train',
@@ -69,24 +73,19 @@ class Trainer(object):
                                              decoder_sequence_length=args.decoder_sequence_length,
                                              target_sensor=args.target_sensor)
         if args.mission_name == 'train_valid':
-            self.dataset_valid = my_dataset.WDSDataset(dataset_type='valid',
-                                                       encoder_sequence_length=args.encoder_sequence_length,
-                                                       decoder_sequence_length=args.decoder_sequence_length,
-                                                       target_sensor=args.target_sensor)
-        elif args.mission_name == 'train_test':
-            self.dataset_valid = my_dataset.WDSDataset(dataset_type='test',
-                                                       encoder_sequence_length=args.encoder_sequence_length,
-                                                       decoder_sequence_length=args.decoder_sequence_length,
-                                                       target_sensor=args.target_sensor)
+            dataset_type = 'valid'
+        else:
+            dataset_type = 'test'
+        self.dataset_valid_test = my_dataset.WDSDataset(dataset_type=dataset_type,
+                                                        encoder_sequence_length=args.encoder_sequence_length,
+                                                        decoder_sequence_length=args.decoder_sequence_length,
+                                                        target_sensor=args.target_sensor)
         self.data_loader = DataLoader(self.dataset,
-                                      batch_size=batch_size,
-                                      shuffle=True,
-                                      )
-        self.data_loader_valid = DataLoader(self.dataset_valid,
-                                            batch_size=batch_size,
-                                            shuffle=False,
-                                            )
-        self.dataset_length = self.dataset.__len__()
+                                      batch_size=self.batch_size,
+                                      shuffle=True)
+        self.data_loader_valid = DataLoader(self.dataset_valid_test,
+                                            batch_size=self.batch_size,
+                                            shuffle=False)
         input_size, output_column = self.dataset.get_input_size()
         if args.version == 'v1':
             self.model = my_model.ANN(input_size, args)
@@ -99,14 +98,13 @@ class Trainer(object):
         elif args.version == 'v5':
             self.model = my_model.DS_RNN_II(input_size, args)
         elif args.version == 'v6':
-            self.model = my_model.DSTP_RNN(input_size, args)
+            self.model = my_model.DSTP_RNN(input_size, args, output_column)
         elif args.version == 'v7':
             self.model = my_model.hDS_RNN(input_size, args)
         self.model = self.model.to(device)
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=args.learning_rate)
-        self.criterion = nn.MSELoss().to(device)
-        self.criterionL1 = nn.L1Loss().to(device)
-        self.batch_size = batch_size
+        self.mse_loss = nn.MSELoss().to(device)
+        self.l1_loss = nn.L1Loss().to(device)
         self.train_mse_loss = []
         self.train_l1_loss = []
         self.valid_mse_loss = []
@@ -162,8 +160,8 @@ class Trainer(object):
                     if self.epoch % 10 == 0:
                         print('label:', np.around(label_p[0].cpu().detach().numpy(), decimals=5))
                         print('output:', np.around(outputs_p[0].cpu().detach().numpy(), decimals=5))
-                loss = self.criterion(outputs_p, label_p)
-                l1loss = self.criterionL1(outputs_p, label_p)
+                loss = self.mse_loss(outputs_p, label_p)
+                l1loss = self.l1_loss(outputs_p, label_p)
                 loss.backward()
                 self.optimizer.step()
                 total_loss += loss.cpu().detach().numpy()
@@ -184,10 +182,10 @@ class Trainer(object):
             if input_p.shape[0] == args.batch_size:
                 outputs_p = self.model(input_p, label_p)
                 label_p = label_p[:, -args.decoder_sequence_length:]
-                loss = self.criterion(outputs_p, label_p)
-                l1loss = self.criterionL1(outputs_p, label_p)
-                l1loss_0 = self.criterion(torch.zeros(label_p.shape, dtype=torch.float32).to(device),
-                                          label_p)
+                loss = self.mse_loss(outputs_p, label_p)
+                l1loss = self.l1_loss(outputs_p, label_p)
+                l1loss_0 = self.mse_loss(torch.zeros(label_p.shape, dtype=torch.float32).to(device),
+                                        label_p)
                 valid_total_loss += loss.cpu().detach().numpy()
                 valid_total_loss_l1 += l1loss.cpu().detach().numpy()
                 total_loss_0 += l1loss_0.cpu().detach().numpy()
