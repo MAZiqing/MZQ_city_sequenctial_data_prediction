@@ -45,15 +45,13 @@ class hDS_RNN(nn.Module):
         self.Vd = nn.Linear(self.n_hid, 1)
 
         # LSTM layer of encoder, decoder and a middle layer
-        self.lstm_s_encoder = nn.LSTMCell(self.n_inp,
-                                          self.n_hid).to(device)
-        self.lstm_t_decoder = nn.LSTMCell(self.n_hid_deco,
-                                          self.n_hid_deco).to(device)
-        self.LSTM_mid = nn.LSTM(input_size=self.n_hid,
-                                hidden_size=self.n_hid,
-                                num_layers=1,
-                                batch_first=True,
-                                dropout=0.5)
+        self.encoder = nn.LSTMCell(self.n_inp, self.n_hid).to(device)
+        self.decoder = nn.LSTMCell(self.n_hid_deco, self.n_hid_deco).to(device)
+        self.mid_layer = nn.LSTM(input_size=self.n_hid,
+                                 hidden_size=self.n_hid,
+                                 num_layers=1,
+                                 batch_first=True,
+                                 dropout=0.5)
 
         # regressor of the output layer
         self.regressor = nn.Linear(self.n_hid_deco, 1)
@@ -78,16 +76,15 @@ class hDS_RNN(nn.Module):
                     self.We(torch.cat([h, c], dim=1)).
                     repeat(self.n_inp, 1, 1).permute(1, 0, 2) +
                     self.Ue(inputs.transpose(1, 2)) +
-                    self.Ue_(inputs[:, i, :])
-                    .repeat(self.n_inp, 1, 1).permute(1, 0, 2)
+                    self.Ue_(inputs[:, i, :]).repeat(self.n_inp, 1, 1).permute(1, 0, 2)
                 )).squeeze()
             self.spatial_att_score_list += [s_att_score.softmax(dim=1).unsqueeze(2)]
             inputs_i = torch.mul(inputs[:, i, :], s_att_score.softmax(dim=1))
-            h, c = self.lstm_s_encoder(inputs_i, (h, c))
+            h, c = self.encoder(inputs_i, (h, c))
             mid_output[:, i, :] = h
 
         # mid layer
-        mid_output, hh = self.LSTM_mid(mid_output)
+        mid_output, hh = self.mid_layer(mid_output)
 
         # Temporal attention
         hi = torch.zeros(batch_size, self.n_hid_deco, device=device)
@@ -96,12 +93,11 @@ class hDS_RNN(nn.Module):
         self.temporal_att_score_list = []
         for i_decoder in range(0, self.T_deco+6):
             t_att_score_ = self.Wd(torch.cat([hi, ci], dim=1)).\
-                               repeat(self.T_enco, 1, 1).transpose(0, 1) + \
-                               self.Ud(mid_output)
+                               repeat(self.T_enco, 1, 1).transpose(0, 1) + self.Ud(mid_output)
             t_att_score = self.Vd(self.Tanh(t_att_score_))
             self.temporal_att_score_list += [t_att_score.transpose(1, 2).softmax(dim=2)]
             decoder_in = torch.bmm(t_att_score.transpose(1, 2), mid_output)
-            hi, ci = self.lstm_t_decoder(decoder_in.squeeze(), (hi, ci))
+            hi, ci = self.decoder(decoder_in.squeeze(), (hi, ci))
             decode_output += [hi.unsqueeze(1)]
 
         # output regressor
@@ -140,10 +136,10 @@ class DS_RNN(nn.Module):
         self.Vd = nn.Linear(self.n_hid, 1)
 
         # LSTM layer of encoder and decoder
-        self.LSTMcell_spatial_encoder = nn.LSTMCell(self.n_inp,
-                                                    self.n_hid).to(device)
-        self.LSTMcell_temporal_decoder = nn.LSTMCell(self.n_hid_deco,
-                                                     self.n_hid_deco).to(device)
+        self.encoder = nn.LSTMCell(self.n_inp,
+                                   self.n_hid).to(device)
+        self.decoder = nn.LSTMCell(self.n_hid_deco,
+                                   self.n_hid_deco).to(device)
 
         # regressor of the output layer
         self.regressor = nn.Linear(self.n_hid_deco, 1)
@@ -171,7 +167,7 @@ class DS_RNN(nn.Module):
                 )).squeeze()
             self.spatial_att_score_list += [atte_score_i.softmax(dim=1).unsqueeze(2)]
             inputs_i = torch.mul(inputs[:, i, :], atte_score_i.softmax(dim=1))
-            h, c = self.LSTMcell_spatial_encoder(inputs_i, (h, c))
+            h, c = self.encoder(inputs_i, (h, c))
             mid_output[:, i, :] = h
 
         # Temporal attention
@@ -186,7 +182,7 @@ class DS_RNN(nn.Module):
             atte_score_2 = self.Vd(self.Tanh(atte_score_2_x))
             self.temporal_att_score_list += [atte_score_2.transpose(1, 2).softmax(dim=2)]
             decoder_in = torch.bmm(atte_score_2.transpose(1, 2).softmax(dim=2), mid_output)
-            hi, ci = self.LSTMcell_temporal_decoder(decoder_in.squeeze(), (hi, ci))
+            hi, ci = self.decoder(decoder_in.squeeze(), (hi, ci))
             decode_output += [hi.unsqueeze(1)]
 
         out = self.regressor(torch.cat(decode_output, dim=1))
@@ -223,8 +219,8 @@ class DS_RNN_II(nn.Module):
         self.Vd = nn.Linear(self.n_hid, 1)
 
         # LSTM layer of the encoder, decoder and mid layer
-        self.LSTMcell_spatial_encoder = nn.LSTMCell(self.n_inp, self.n_hid).to(device)
-        self.LSTMcell_temporal_decoder = nn.LSTMCell(self.n_hid, self.n_hid).to(device)
+        self.encoder = nn.LSTMCell(self.n_inp, self.n_hid).to(device)
+        self.decoder = nn.LSTMCell(self.n_hid, self.n_hid).to(device)
         self.LSTM_mid = nn.LSTM(input_size=self.n_hid,
                                 hidden_size=self.n_hid,
                                 num_layers=1,
@@ -256,7 +252,7 @@ class DS_RNN_II(nn.Module):
                 ))
             self.spatial_att_score_list += [atte_score_i.softmax(dim=1).unsqueeze(2)]
             inputs_i = torch.mul(inputs[:, i, :], atte_score_i.softmax(dim=1))
-            h, c = self.LSTMcell_spatial_encoder(inputs_i, (h, c))
+            h, c = self.encoder(inputs_i, (h, c))
             mid_output[:, i, :] = h
 
         # middle layer
@@ -268,12 +264,12 @@ class DS_RNN_II(nn.Module):
         decode_output = []
         self.temporal_att_score_list = []
         for i_decoder in range(0, self.T_deco+4):
-            atte_score_2_x = self.Wd(torch.cat([hi, ci], dim=1)).repeat(self.T_deco, 1, 1).transpose(0, 1) + \
+            atte_score_2x = self.Wd(torch.cat([hi, ci], dim=1)).repeat(self.T_enco, 1, 1).transpose(0, 1) + \
                              self.Ud(mid_output)
-            atte_score_2 = self.Vd(self.Tanh(atte_score_2_x))
+            atte_score_2 = self.Vd(self.Tanh(atte_score_2x))
             self.temporal_att_score_list += [atte_score_2.transpose(1, 2).softmax(dim=2)]
             decoder_in = torch.bmm(atte_score_2.transpose(1, 2), mid_output)
-            hi, ci = self.LSTMcell_temporal_decoder(decoder_in.squeeze(), (hi, ci))
+            hi, ci = self.decoder(decoder_in.squeeze(), (hi, ci))
             decode_output += [hi.unsqueeze(1)]
         out = torch.cat(decode_output, dim=1)
         out = self.regressor(out)
@@ -444,9 +440,6 @@ class Transformer(nn.Module):
     def __init__(self, input_p_q_size, args):
         super(Transformer, self).__init__()
         self.model_name = 'transformer'
-        self.model_path = os.path.join('../rnn_model', 'saved_pkl_model',
-                                       self.model_name + '.pkl')
-        print('model_name:', self.model_name, 'saved at:', self.model_path)
         self.args = args
         self.activ = nn.Tanh()
         self.src_mask = None

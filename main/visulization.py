@@ -8,13 +8,11 @@
 import time
 import warnings
 import sys
-
 sys.path.append('..')
-# 第三方库
+from matplotlib import pyplot as plt
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
-# 自建库
 import src.model as my_model
 import src.py_dataset as my_dataset
 from src.support_function import *
@@ -29,14 +27,14 @@ torch.cuda.manual_seed(seed)
 
 
 parser = argparse.ArgumentParser(description='Time Series Model')
-parser.add_argument('--version', type=str, default='v9')
+parser.add_argument('--version', type=str, default='v7')
 parser.add_argument('--have_cuda', type=bool, default=torch.cuda.is_available())
 parser.add_argument('--mission_name', type=str, default='train_test')
 parser.add_argument('--target_sensor', type=str, default='q8')
 
 parser.add_argument('--epochs', type=int, default=1,
                     help='upper epoch limit')
-parser.add_argument('--batch_size', type=int, default=1024
+parser.add_argument('--batch_size', type=int, default=64
                     , metavar='N',
                     help='batch size')
 parser.add_argument('--learning_rate', type=float, default=0.1, metavar='N',
@@ -50,7 +48,7 @@ parser.add_argument('--num_hidden_state', type=int, default=64)
 #  lr = 0.0000005 epoch: 676 | time: 24.430149 | tra
 #  in_MSEloss: 0.056815 | train_L1_loss: 0.593346|
 parser.add_argument('--encoder_sequence_length', type=int, default=60)
-parser.add_argument('--decoder_sequence_length', type=int, default=10)
+parser.add_argument('--decoder_sequence_length', type=int, default=4)
 
 # parser.add_argument('--rolling_window', type=int, default=20)
 parser.add_argument('--dataset_path', type=str, default='../Dataset/3bs_8q_4p_dataset_washed.csv',
@@ -99,22 +97,20 @@ class Trainer(object):
                                             )
         self.dataset_length = self.dataset.__len__()
         input_size, output_column = self.dataset.get_input_size()
-        if args.version == 'v3':
-            self.model = my_model.DS_RNN_II(input_size, output_size, output_column, args)
+        if args.version == 'v1':
+            self.model = my_model.ANN(input_size, args)
+        elif args.version == 'v2':
+            self.model = my_model.Seq2Seq(input_size, args)
+        elif args.version == 'v3':
+            self.model = my_model.Transformer(input_size, args)
         elif args.version == 'v4':
-            self.model = my_model.dSTA_RNN(input_size, output_size, output_column, args)
-            # self.model = my_model.STAttention_notf_v4(input_size, output_size, output_column, args)
+            self.model = my_model.DS_RNN(input_size, args)
         elif args.version == 'v5':
-            self.model = my_model.hDS_RNN(input_size, output_size, output_column, args)
-
+            self.model = my_model.DS_RNN_II(input_size, args)
         elif args.version == 'v6':
-            self.model = my_model.STAttention_notf_v6(input_size, output_size, output_column, args)
+            self.model = my_model.DSTP_RNN(input_size, args)
         elif args.version == 'v7':
-            self.model = my_model.STAttention_notf_v7(input_size, output_size, output_column, args)
-        elif args.version == 'v8':
-            self.model = my_model.DS_RNN(input_size, output_size, output_column, args)
-        elif args.version == 'v9':
-            self.model = my_model.DSTP_RNN(input_size, args, output_column)
+            self.model = my_model.hDS_RNN(input_size, args)
 
         self.model = self.model.to(device)
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=args.learning_rate)
@@ -201,12 +197,12 @@ class Trainer(object):
             if input_p.shape[0] == args.batch_size:
                 outputs_p = self.model(input_p, label_p)
 
-                SA_score = torch.mean(torch.cat(self.model.spatial_att_score_list, dim=2), dim=0).cpu().detach().numpy()
-                TA_score = torch.mean(torch.cat(self.model.temporal_att_score_list, dim=1), dim=0).cpu().detach().numpy()
-                df_SA_score = pd.DataFrame(SA_score, index=self.dataset.continue_column)
-                df_SA_score.to_csv(os.path.join('../result', 'visu', self.model.model_name + '_SA.csv'))
-                df_TA_score = pd.DataFrame(TA_score)
-                df_TA_score.to_csv(os.path.join('../result', 'visu', self.model.model_name + '_TA.csv'))
+                # SA_score = torch.mean(torch.cat(self.model.spatial_att_score_list, dim=2), dim=0).cpu().detach().numpy()
+                # TA_score = torch.mean(torch.cat(self.model.temporal_att_score_list, dim=1), dim=0).cpu().detach().numpy()
+                # df_SA_score = pd.DataFrame(SA_score, index=(self.dataset.pressure_column + self.dataset.flow_column))
+                # df_SA_score.to_csv(os.path.join('../result', 'visu', self.model.model_name + '_SA.csv'))
+                # df_TA_score = pd.DataFrame(TA_score)
+                # df_TA_score.to_csv(os.path.join('../result', 'visu', self.model.model_name + '_TA.csv'))
 
                 # fig, ax = plt.subplots(1, 1)
                 # img = ax.imshow(SA_score)
@@ -235,14 +231,14 @@ class Trainer(object):
         best_epoch = 1
         for self.epoch in range(0, self.num_epoch):
             since = time.time()
-            train_mse_loss, train_l1_loss = self.train()
+            # train_mse_loss, train_l1_loss = self.train()
             valid_mse_loss, valid_l1_loss, valid_mse_loss_0, datetime_list, outputs_p_list = self.valid()
             # if self.epoch % 5 == 0:
-            print('epoch: {:} | time: {:2f} | train_MSEloss: {:4f} | train_L1_loss: {:4f} |'
-                  ' best_valid_MSEloss: {:4f}/{:4f} | valid_L1_loss: {:4f}'.format(
-                self.epoch, time.time() - since, train_mse_loss, train_l1_loss,
-                best_valid_mse_loss, valid_mse_loss_0, valid_l1_loss
-            ))
+            # print('epoch: {:} | time: {:2f} | train_MSEloss: {:4f} | train_L1_loss: {:4f} |'
+            #       ' best_valid_MSEloss: {:4f}/{:4f} | valid_L1_loss: {:4f}'.format(
+            #     self.epoch, time.time() - since, train_mse_loss, train_l1_loss,
+            #     best_valid_mse_loss, valid_mse_loss_0, valid_l1_loss
+            # ))
             if valid_mse_loss < best_valid_mse_loss:
                 recon_list = self.reconstruct(datetime_list, outputs_p_list)
                 # self.save_model()
@@ -308,9 +304,10 @@ class Trainer(object):
             eval_dict = eval_metrics(true, pred)
             return_list += [eval_dict]
             print(eval_dict)
-            # df3['pre_' + i] = (df3['temp'] + df3['q8_seasonal'].shift(-index).rolling(index + 1).sum() +
-            #                    df3['q8_ori'].copy().shift(-1)).shift(index)
-            # eval_dict = eval_metrics(df3['pre_' + i].iloc[start:end].values, df3['q8_ori'].iloc[start:end].values)
+
+            df3['pre_' + i] = (df3['temp'] + df3['q8_seasonal'].shift(-index).rolling(index + 1).sum() +
+                               df3['q8_ori'].copy().shift(-1)).shift(index)
+            eval_dict = eval_metrics(df3['pre_' + i].iloc[start:end].values, df3['q8_ori'].iloc[start:end].values)
             # print(eval_dict)
             # if index < 2:
             #     plt.plot(df3['pre_' + i].iloc[start:end])
@@ -318,6 +315,11 @@ class Trainer(object):
             mean_mse += eval_dict['MSE'] / 4
         print('mae', mean_mae, 'mse', mean_mse)
         return_list += [mean_mae, mean_mse]
+
+
+        plt.plot(df3['pre_1'])
+        plt.savefig('./test.png')
+
         return return_list
         # plt.savefig('./test.png')
         # plt.show()
@@ -333,8 +335,8 @@ if __name__ == '__main__':
     trainer.load_model()
     valid_mse_loss, valid_l1_loss, valid_mse_loss_0, datetime_list, outputs_p_list = trainer.valid()
     recon_list = trainer.reconstruct(datetime_list, outputs_p_list)
+    a = 1
 
     # total_loss, total_loss_l1 = trainer.valid()
     # trainer.plot_result()
     # trainer.main_loop()
-    a = 1

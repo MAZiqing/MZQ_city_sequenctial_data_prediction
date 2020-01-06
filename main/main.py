@@ -29,7 +29,7 @@ torch.cuda.manual_seed(seed)
 
 
 parser = argparse.ArgumentParser(description='Time Series Model')
-parser.add_argument('--version', type=str, default='v5')
+parser.add_argument('--version', type=str, default='v7')
 parser.add_argument('--have_cuda', type=bool, default=torch.cuda.is_available())
 parser.add_argument('--mission_name', type=str, default='train_test')
 parser.add_argument('--target_sensor', type=str, default='q8')
@@ -44,8 +44,6 @@ parser.add_argument('--num_layer', type=int, default=1)
 parser.add_argument('--num_hidden_state', type=int, default=64)
 parser.add_argument('--encoder_sequence_length', type=int, default=60)
 parser.add_argument('--decoder_sequence_length', type=int, default=4)
-parser.add_argument('--dataset_path', type=str, default='../Dataset/3bs_8q_4p_dataset_washed.csv',
-                    help='dataset_path')
 parser.add_argument('--model_path', type=str, default=os.path.join('../src', 'saved_pkl_model'),
                     help='dataset_name')
 parser.add_argument('--result_path', type=str, default=os.path.join('../result', 'STAttention.csv'))
@@ -89,7 +87,7 @@ class Trainer(object):
                                             shuffle=False,
                                             )
         self.dataset_length = self.dataset.__len__()
-        input_size, output_size, output_column = self.dataset.get_input_size()
+        input_size, output_column = self.dataset.get_input_size()
         if args.version == 'v1':
             self.model = my_model.ANN(input_size, args)
         elif args.version == 'v2':
